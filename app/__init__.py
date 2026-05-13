@@ -18,9 +18,14 @@ def create_app(config: Config | None = None) -> Flask:
     from app.routes.health import bp as health_bp
     app.register_blueprint(health_bp)
 
+    from app.routes.authors import bp as authors_bp
+    app.register_blueprint(authors_bp)
+
     @app.errorhandler(ValidationError)
     def _ve(err: ValidationError):
-        return jsonify({"error": "validation", "details": err.errors()}), 422
+        import json
+        details = json.loads(err.json())
+        return jsonify({"error": "validation", "details": details}), 422
 
     @app.errorhandler(404)
     def _nf(_):
