@@ -292,13 +292,17 @@ data "aws_iam_policy_document" "gha_app" {
     ]
   }
   statement {
-    sid    = "AsgRefresh"
-    effect = "Allow"
-    actions = [
-      "autoscaling:StartInstanceRefresh",
-      "autoscaling:DescribeInstanceRefreshes",
-    ]
+    sid       = "AsgRefreshStart"
+    effect    = "Allow"
+    actions   = ["autoscaling:StartInstanceRefresh"]
     resources = [var.asg_arn]
+  }
+  statement {
+    # Describe* actions do not support resource-level restrictions in IAM
+    sid       = "AsgRefreshDescribe"
+    effect    = "Allow"
+    actions   = ["autoscaling:DescribeInstanceRefreshes"]
+    resources = ["*"]
   }
 }
 
