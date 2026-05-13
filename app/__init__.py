@@ -21,6 +21,9 @@ def create_app(config: Config | None = None) -> Flask:
     from app.routes.authors import bp as authors_bp
     app.register_blueprint(authors_bp)
 
+    from app.routes.books import bp as books_bp
+    app.register_blueprint(books_bp)
+
     @app.errorhandler(ValidationError)
     def _ve(err: ValidationError):
         import json
