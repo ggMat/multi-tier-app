@@ -1,0 +1,115 @@
+name: app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'requirements*.txt'
+      - '.github/workflows/app.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'requirements*.txt'
+      - '.github/workflows/app.yml'
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REPO: portfolio-multi-tier-app
+  SSM_IMAGE_TAG_PARAM: /portfolio-multi-tier-app/app/image_tag
+  ASG_NAME: portfolio-multi-tier-app-asg
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+      - name: Run tests
+        run: pytest -q --cov=app --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  build-and-push:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.sha.outputs.sha_short }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Short SHA
+        id: sha
+        run: echo "sha_short=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GHA_APP_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        run: |
+          ECR_URL="${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}"
+          docker buildx build --platform linux/amd64 \
+            -t "$ECR_URL:${{ steps.sha.outputs.sha_short }}" \
+            -t "$ECR_URL:latest" \
+            --push .
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GHA_APP_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Update SSM image_tag
+        run: |
+          aws ssm put-parameter \
+            --name "${{ env.SSM_IMAGE_TAG_PARAM }}" \
+            --value "${{ needs.build-and-push.outputs.image_tag }}" \
+            --type String --overwrite
+      - name: Start instance refresh
+        id: refresh
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "${{ env.ASG_NAME }}" \
+            --preferences MinHealthyPercentage=0,InstanceWarmup=120 \
+            --query InstanceRefreshId --output text)
+          echo "refresh_id=$REFRESH_ID" >> "$GITHUB_OUTPUT"
+      - name: Wait for refresh
+        run: |
+          for i in $(seq 1 60); do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "${{ env.ASG_NAME }}" \
+              --instance-refresh-ids "${{ steps.refresh.outputs.refresh_id }}" \
+              --query 'InstanceRefreshes[0].Status' --output text)
+            echo "Status: $STATUS"
+            case "$STATUS" in
+              Successful) exit 0 ;;
+              Failed|Cancelled) echo "Refresh failed"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out"; exit 1
+      - name: Summary
+        run: |
+          echo "### Deployed image: \`${{ needs.build-and-push.outputs.image_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
