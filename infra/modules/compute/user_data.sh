@@ -11,9 +11,8 @@ SSM_PREFIX="${ssm_prefix}"
 LOG_GROUP="${log_group}"
 APP_PORT="${app_port}"
 
-# Install Docker
-dnf update -y
-dnf install -y docker awscli amazon-cloudwatch-agent
+# Install Docker (awscli and amazon-cloudwatch-agent ship pre-installed on AL2023)
+dnf install -y docker
 systemctl enable --now docker
 
 # Fetch SSM params
