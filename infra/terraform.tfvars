@@ -6,5 +6,5 @@ tags = {
   Owner   = "luigi.matera"
 }
 
-admin_cidr  = "0.0.0.0/32"                  # OVERRIDE with `curl ifconfig.me/32` before apply
-github_repo = "luigi-matera/multi-tier-app" # adjust to actual repo
+admin_cidr  = "77.249.117.145/32"
+github_repo = "ggMat/multi-tier-app"
