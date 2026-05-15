@@ -8,7 +8,7 @@ data "aws_caller_identity" "current" {}
 
 resource "aws_key_pair" "operator" {
   key_name   = "${local.project_name}-key"
-  public_key = file(pathexpand(var.ssh_public_key_path))
+  public_key = var.ssh_public_key
   tags       = var.tags
 }
 

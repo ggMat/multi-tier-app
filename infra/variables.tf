@@ -36,10 +36,9 @@ variable "admin_cidr" {
   type        = string
 }
 
-variable "ssh_public_key_path" {
-  description = "Path on the operator's laptop to the SSH public key used for the bastion."
+variable "ssh_public_key" {
+  description = "ED25519 public key content for the operator key pair (bastion + NAT SSH access)."
   type        = string
-  default     = "~/.ssh/multi-tier-app.pub"
 }
 
 variable "db_password" {
